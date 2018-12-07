@@ -136,7 +136,7 @@ except:
 
 # ## Associated data
 
-# In[ ]:
+# In[6]:
 
 ### Load the data
 DATA = LOAD_DATA( RandomSeed=RandomSeed,

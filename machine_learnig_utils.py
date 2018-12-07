@@ -45,7 +45,8 @@ paramName = [ 'ZETA', 'Tvir', 'LX', 'E0', 'all4' ]
 
 def load_model( fileName ):
     """
-    load a keras model from a file
+    load a keras model from fileName
+    return the model
     """
     from keras.models import model_from_json
     json_file = open(  fileName+'.json', 'r' )
