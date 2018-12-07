@@ -1,33 +1,23 @@
+
+
 import numpy as np
 from time import time
 
 import sys, argparse, textwrap
 
-### USE THIS TO OMP !!!!!!!!
+### to use openMP
 ### export OMP_NUM_THREADS=2
 
 #############
 ### INPUT ###
 #############
-### param_all4_2D
-### param_all4_2D_drop == REF
-### param_all4_2D_drop_30
-### param_all4_2D_drop_35
-### param_all4_2D_drop_20_seed_9876
-### param_all4_2D_batchNorm   == param_all4_2D_drop + batchNorm
-### param_all4_2D_LeackyRelu  == param_all4_2D_drop + all layer LeakyReLU + small filters
-### param_all4_2D_allDrop     == param_all4_2D_drop + all layer dropOut
-### param_all4_2D_1batchNorm  == param_all4_2D_drop + 1 batchNorm at beggening
-### param_all4_2D_smallFilter == param_all4_2D_drop + smmal numbe filter
-### param_all4_2D_smallFilter_1batchNorm == param_all4_2D_drop + smmal numbe filter + 1 batchNorm at beggening
 
-########################################
-### FIDUCIAL : 
-### param_all4_2D_smallFilter_1batchNorm
-########################################
+#######################################################
+### FIDUCIAL :                                      ###
+### param_all4_2D_smallFilter_1batchNorm_multiSlice ###
+#######################################################
 
 ### param_all4_2D_smallFilter_1batchNorm_multiSlice.py ### fiducial + 10 slices per training
-
 from param_all4_2D_smallFilter_1batchNorm_multiSlice import * 
 
 #############
@@ -40,37 +30,13 @@ from keras import backend as K
 if( K.backend()=='tensorflow'):
     import tensorflow as tf
     import sys
-    # njobs = np.int( sys.argv[1] )
-    njobs = np.int( 20 )
-    config = tf.ConfigProto( intra_op_parallelism_threads=njobs,
-                             inter_op_parallelism_threads=njobs,
-                             allow_soft_placement=True,
-                             log_device_placement=True,
-                             device_count = {'CPU':njobs})
-    session = tf.Session(config=config)
-    K.set_session(session)
-    K.set_image_dim_ordering('tf')
-    #print( 'image_dim_ordering : ', K.image_dim_ordering() )
     K.set_image_data_format('channels_last')
-    #K.set_image_data_format('channels_first')
-    #print( 'image_data_format  : ', K.image_data_format() )
 else:
     import theano
     theano.config.exception_verbosity='high'
     theano.config.openmp = True
-    #theano.config.blas.ldflags = '-lopenblas'
-    #print( 'mode         :', theano.config.mode )
-    #print( 'openmp       :', theano.config.openmp )
-    #print( 'device       :', theano.config.device )
-    #print( 'force_device :', theano.config.force_device )
-    #print( 'floatX       :', theano.config.floatX )
-    #print( 'ldflags      :', theano.config.blas.ldflags )
-    #K.set_image_dim_ordering('th')
     K.set_image_dim_ordering('th')
-    #print( 'image_dim_ordering : ', K.image_dim_ordering() )
-    #K.set_image_data_format('channels_last')
     K.set_image_data_format('channels_first')
-    #print( 'image_data_format  : ', K.image_data_format() )
     
 ######################
 ### CODE PARAMETER ###
@@ -102,6 +68,7 @@ print( 'LR factor      :', factor)
 print( 'LR patience    :', patience)
 
 ### Variables not define in all parameter file!!
+### TODO: clean param files - set to all the same list of params
 try:
     print( 'LeackyRelu     :',LeackyRelu_alpha )
 except:
@@ -157,17 +124,8 @@ if validation:
     (LC_train,LC_test,LC_val),(Param_train,Param_test,Param_val),(Param_raw_train,Param_raw_test,Param_raw_val) = LOAD_DATA(*paramToLoad)
 else:
     (LC_train,LC_test),(Param_train,Param_test),(Param_raw_train,Param_raw_test) = LOAD_DATA(*paramToLoad)  
- 
-#if multiple_slice:
-#    LC_train = LC_train[:8000]
-#    Param_train = Param_train[:8000]
-#    Param_raw_train = Param_raw_train[:8000]
-
-####################################
-### CONVOLUTIONAL NEURAL NETWORK ###
-####################################
-
-### automatic adjustment of data dimention 
+    
+### adjustment of data dimention 
 if( K.image_data_format()=='channels_first' ):
     LC_train = np.squeeze(     LC_train, axis=3 )
     LC_train = np.expand_dims( LC_train, axis=1 )
@@ -177,143 +135,90 @@ if( K.image_data_format()=='channels_first' ):
         LC_val  = np.squeeze(     LC_val , axis=3 )
         LC_val  = np.expand_dims( LC_val , axis=1 )
 
-### ADAPTE IT BY HAND! BE CAREFULL 
-        
+####################################
+### CONVOLUTIONAL NEURAL NETWORK ###
+####################################
+   
 input_shape = LC_train.shape[1:]
 print('input shape : ',input_shape)
-
-if reduce_CNN :
-
-    padding = 'valid' ### 'same' or 'valid
-    filter_size = (10,10)
-    activation = 'relu' ### 'linear' 'relu'
-    use_bias=True
+padding = 'valid' ### 'same' or 'valid
+filter_size = (10,10)
+activation = 'relu' ### 'linear' 'relu'
+use_bias=True
     
-    from keras.layers import Activation
-    from keras.layers.advanced_activations import LeakyReLU
+from keras.layers import Activation
+from keras.layers.advanced_activations import LeakyReLU
     
-    if( batchNorm ):
-        use_bias=False
-        activation = 'linear' ### 'linear' 'relu'
+if( batchNorm ):
+    use_bias=False
+    activation = 'linear' ### 'linear' 'relu'
     
-    if( LeackyRelu_alpha ):
-        activation = 'linear' ### 'linear' 'relu'
+if( LeackyRelu_alpha ):
+    activation = 'linear' ### 'linear' 'relu'
 
-    from keras.layers import Convolution2D, MaxPooling2D, Dropout, Flatten, Dense, BatchNormalization
-    from keras.models import Sequential
-    model = Sequential()
+from keras.layers import Convolution2D, MaxPooling2D, Dropout, Flatten, Dense, BatchNormalization
+from keras.models import Sequential
+model = Sequential()
 
-    ### CONV 1
-    model.add( Convolution2D( Nfilter1, filter_size, activation=activation, 
-                              input_shape=input_shape, name='Conv-1', padding=padding, use_bias=use_bias ) )
-    if( batchNorm ):
-        model.add( BatchNormalization() )
-    if( LeackyRelu_alpha ):
-        model.add( LeakyReLU(alpha=LeackyRelu_alpha) )
-    if( ( batchNorm ) and not(LeackyRelu_alpha) ):
-        model.add( Activation('relu') )
+### CONV 1
+model.add( Convolution2D( Nfilter1, filter_size, activation=activation, 
+                          input_shape=input_shape, name='Conv-1', padding=padding, use_bias=use_bias ) )
+if( batchNorm ):
+    model.add( BatchNormalization() )
+if( LeackyRelu_alpha ):
+    model.add( LeakyReLU(alpha=LeackyRelu_alpha) )
+if( ( batchNorm ) and not(LeackyRelu_alpha) ):
+    model.add( Activation('relu') )
         
-    ### MAXPOOL 1
-    model.add( MaxPooling2D( pool_size=(2,2), name='Pool-1' ) )
-    #if use_dropout:
-    #    model.add( Dropout(use_dropout) )
+### MAXPOOL 1
+model.add( MaxPooling2D( pool_size=(2,2), name='Pool-1' ) )
 
-    ### CONV 2
-    model.add( Convolution2D( Nfilter2, filter_size, activation=activation, 
-                              name='Conv-2', padding=padding, use_bias=use_bias ) )
-    if( batchNorm ):
-        model.add( BatchNormalization() )
-    if( LeackyRelu_alpha ):
-        model.add( LeakyReLU(alpha=LeackyRelu_alpha) )
-    if( batchNorm and not(LeackyRelu_alpha) ):
-        model.add( Activation('relu') )
+### CONV 2
+model.add( Convolution2D( Nfilter2, filter_size, activation=activation, 
+                          name='Conv-2', padding=padding, use_bias=use_bias ) )
+if( batchNorm ):
+    model.add( BatchNormalization() )
+if( LeackyRelu_alpha ):
+    model.add( LeakyReLU(alpha=LeackyRelu_alpha) )
+if( batchNorm and not(LeackyRelu_alpha) ):
+    model.add( Activation('relu') )
         
-    ### MAXPOOL 2
-    model.add( MaxPooling2D( pool_size=(2,2), name='Pool-2' ) )
+### MAXPOOL 2
+model.add( MaxPooling2D( pool_size=(2,2), name='Pool-2' ) )
 
-    ### FLATTEN
-    model.add( Flatten( name='Flat' ) )
-    if use_dropout: ### AFTER TEST THIS ONE AT 0.2 WORK WELL
-        model.add( Dropout(use_dropout) )
+### FLATTEN
+model.add( Flatten( name='Flat' ) )
+if use_dropout: 
+    model.add( Dropout(use_dropout) )
         
-    ### DENSE 1
-    model.add( Dense( Nfilter3, activation=activation, name='Dense-1', use_bias=use_bias ) )
-    if( batchNorm or FirstbatchNorm ):
-        model.add( BatchNormalization() )
-    #if( LeackyRelu_alpha ):
-    #    model.add( LeakyReLU(alpha=LeackyRelu_alpha) )
-    if( ( batchNorm or FirstbatchNorm ) and not(LeackyRelu_alpha) ):
-        model.add( Activation('relu') )
-    #if use_dropout:
-    #    model.add( Dropout(use_dropout) )
+### DENSE 1
+model.add( Dense( Nfilter3, activation=activation, name='Dense-1', use_bias=use_bias ) )
+if( batchNorm or FirstbatchNorm ):
+    model.add( BatchNormalization() )
+if( ( batchNorm or FirstbatchNorm ) and not(LeackyRelu_alpha) ):
+    model.add( Activation('relu') )
     
-    ### DENSE 2
-    model.add( Dense( Nfilter2, activation=activation, name='Dense-2', use_bias=use_bias ) )
-    if( batchNorm ):
-        model.add( BatchNormalization() )
-    #if( LeackyRelu_alpha ):
-    #    model.add( LeakyReLU(alpha=LeackyRelu_alpha) )
-    if( batchNorm and not(LeackyRelu_alpha) ):
-        model.add( Activation('relu') )
-    #if use_dropout:
-    #    model.add( Dropout(use_dropout) )
+### DENSE 2
+model.add( Dense( Nfilter2, activation=activation, name='Dense-2', use_bias=use_bias ) )
+if( batchNorm ):
+    model.add( BatchNormalization() )
+if( batchNorm and not(LeackyRelu_alpha) ):
+    model.add( Activation('relu') )
     
-    ### DENSE 3
-    model.add( Dense( Nfilter1, activation=activation, name='Dense-3', use_bias=use_bias ) )
-    if( batchNorm ):
-        model.add( BatchNormalization() )
-    #if( LeackyRelu_alpha ):
-    #    model.add( LeakyReLU(alpha=LeackyRelu_alpha) )
-    if( batchNorm and not(LeackyRelu_alpha) ):
-        model.add( Activation('relu') )
-    #if use_dropout:
-    #    model.add( Dropout(use_dropout) )
+### DENSE 3
+model.add( Dense( Nfilter1, activation=activation, name='Dense-3', use_bias=use_bias ) )
+if( batchNorm ):
+    model.add( BatchNormalization() )
+if( batchNorm and not(LeackyRelu_alpha) ):
+    model.add( Activation('relu') )
         
-    ### DENSE OUT
-    if all4:
-        model.add( Dense( 4, activation='linear', name='Out' ) )
-    else:
-        model.add( Dense( 1, activation='linear', name='Out' ) )
-    
+### DENSE OUT
+if all4:
+    model.add( Dense( 4, activation='linear', name='Out' ) )
 else:
-    Nfilter1 = 32
-    Nfilter2 = 64
-    Nfilter3 = 128
-    Nfilter4 = 256
-
-    padding = 'valid' ### 'same' or 'valid
-    filter_size = (10,10)
-    filter_size_last = (4,4)
-
-    from keras.layers import Convolution2D, MaxPooling2D, Dropout, Flatten, Dense
-    from keras.models import Sequential
-    model = Sequential()
-
-    model.add( Convolution2D( Nfilter1, filter_size, activation='relu', input_shape=input_shape, name='Conv-1', padding=padding ) )
-    #model.add( BatchNormalization() )
-    model.add( MaxPooling2D( pool_size=(2,2), name='Pool-1' ) )
-
-    model.add( Convolution2D( Nfilter2, filter_size, activation='relu', name='Conv-2', padding=padding) )
-    #model.add( BatchNormalization() )
-    model.add( MaxPooling2D( pool_size=(2,2), name='Pool-2' ) )
-
-    #model.add( Convolution2D( Nfilter3, filter_size, activation='relu', name='Conv-3', padding=padding) )
-    #model.add( MaxPooling2D( pool_size=(2,2), name='Pool-3' ) ) 
-
-    #model.add( Convolution2D( Nfilter4, filter_size_last, activation='relu', name='Conv-4', padding=padding) )
-    #model.add( MaxPooling2D( pool_size=(2,2), name='Pool-4' ) ) 
-
-    model.add( Flatten( name='Flat' ) )
-    model.add( Dense( Nfilter3, activation='relu', name='Dense-1' ) )
-    #model.add( Dropout(0.5) )
-    model.add( Dense( Nfilter2, activation='relu', name='Dense-2' ) )
-    model.add( Dense( Nfilter1, activation='relu', name='Dense-3' ) )
-
-    if all4:
-        model.add( Dense( 4, activation='linear', name='Out' ) )
-    else:
-        model.add( Dense( 1, activation='linear', name='Out' ) )
+    model.add( Dense( 1, activation='linear', name='Out' ) )
     
+##############################    
 model.summary(line_length=120) 
 
 ######################
@@ -321,25 +226,11 @@ model.summary(line_length=120)
 ######################
 
 ### DEFINE THE LEARNING RATE
-import math
-def step_decay(epoch):
-    ### MAIN TUNNING HERE
-    #elif(optimizer=='RMSprop'):
-    dec=0.5
-    epoch_drop = 2
-    init_lr = 0.001 #0.0003 # 0.001
-
-    lr =  init_lr 
-    lr =  init_lr * np.power( dec, np.floor( (1+epoch) /epoch_drop ) )
-    if( lr < 1.e-6 ):
-        lr = 1.e-6
-    return lr
 
 ### set the learning rate callback
 callbacks_list=[]
 if( 1 ):
     from keras.callbacks import LearningRateScheduler, ReduceLROnPlateau
-    #lrate = LearningRateScheduler( step_decay )
     lrate = ReduceLROnPlateau( monitor='loss', factor=factor, patience=patience )
     callbacks_list.append( lrate )
 
@@ -367,20 +258,12 @@ model.compile( loss=loss,
                metrics=[coeff_determination] )
 
 ### THE LEARNING FUNCTION
-if all4:
-    history = model.fit( LC_train, Param_train,
-                         epochs=epochs,
-                         batch_size=batch_size,
-                         callbacks=callbacks_list,
-                         validation_data=( LC_test, Param_test ),
-                         verbose=True )
-else:
-    history = model.fit( LC_train[:], Param_train[:,paramNum],
-                         epochs=epochs,
-                         batch_size=batch_size,
-                         callbacks=callbacks_list,
-                         #validation_data=( LC_test[:1000], Param_test[:1000,paramNum] ),
-                         verbose=True )
+history = model.fit( LC_train, Param_train,
+                     epochs=epochs,
+                     batch_size=batch_size,
+                     callbacks=callbacks_list,
+                     validation_data=( LC_test, Param_test ),
+                     verbose=True )
 
 np.save( CNN_folder + history_file, history.history )
 
